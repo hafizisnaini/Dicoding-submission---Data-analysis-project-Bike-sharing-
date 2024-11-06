@@ -1,0 +1,6 @@
+kagglehub
+pandas
+matplotlib
+numpy
+seaborn
+plotly

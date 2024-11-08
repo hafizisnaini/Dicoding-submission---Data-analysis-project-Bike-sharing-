@@ -4,6 +4,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import plotly.express as px
+import plotly.figure_factory as ff
 from datetime import datetime
 import streamlit as st
 
@@ -17,6 +18,14 @@ dfDay.yr += 2011
 dfDay.atemp = 66*dfDay.atemp - 16
 dfDay.temp = 47*dfDay.temp - 8
 
+q25, q75 = np.percentile(dfDay.hum, 25), np.percentile(dfDay.hum, 75)
+iqr = q75 - q25
+cut_off = iqr * 1.5
+minimum, maximum = q25 - cut_off, q75 + cut_off
+
+outliers = np.where(dfDay.hum < minimum)
+dfDay = dfDay.drop(dfDay.index[outliers])
+
 dfDay.rename(columns={
   'dteday': 'dateday',
   'yr': 'year',
@@ -25,14 +34,7 @@ dfDay.rename(columns={
 }, inplace=True)
 
 dfDay['dateday'] = pd.to_datetime(dfDay['dateday'])
-dfDay['weekday'] = dfDay['dateday'].dt.day_name()
 dfDay['year'] = dfDay['dateday'].dt.year
-dfDay['season'] = dfDay['season'].map({
-  1: 'Spring',
-  2: 'Summer',
-  3: 'Fall',
-  4: 'Winter',
-})
 dfDay['weathersit'] = dfDay['weathersit'].map({
   1: 'Clear/Partly Cloudy',
   2: 'Misty/Cloudy',
@@ -123,69 +125,94 @@ st.markdown("---")
 
 #Visualization
 
-monthlyBiker['total_rides'] = monthlyBiker['casual'] + monthlyBiker['registered']
-fig = px.bar(monthlyBiker,
-             x='yearmonth',
-             y=['casual', 'registered', 'total_rides'],
-             barmode='group',
-             color_discrete_sequence=["#F07167", "#FDFCDC", "#0081A7"],
-             title="Monthly Bike Rides Trends in Recent Years",
-             labels={'casual': 'Casual Rentals', 'registered': 'Registered Rentals', 'cnt': 'Total Rides', 'variable': 'User Type'})
+fig = px.scatter(dfDay, x='atemp', y='count', color='year',
+                 title='Total Bike Rider by RealFeel Temperature',
+                 labels={'atemp': 'Temperature (°C)', 'count': 'Total Riders'},
+                 hover_name='year')
 
-fig.update_layout(xaxis_title='Month', yaxis_title='Total Rentals',
-                  xaxis=dict(showgrid=False, showline=True, linecolor='rgb(204, 204, 204)', linewidth=2, mirror=True),
-                  yaxis=dict(showgrid=False, zeroline=False, showline=True, linecolor='rgb(204, 204, 204)', linewidth=2, mirror=True),
-                  plot_bgcolor='rgba(255, 255, 255, 0)',
-                  showlegend=True,
-                  legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+years = dfDay['year'].unique()
+for year in years:
+    df_year = dfDay[dfDay['year'] == year]
+    trendline = px.scatter(df_year, x='atemp', y='count', trendline='lowess')
+    fig.add_trace(trendline.data[1])
 
 st.plotly_chart(fig, use_container_width=True)
 
-fig = px.box(dfDay, x='weathersit', y='count', color='weathersit', 
-             title='Bike Rides Distribution Based on Weather Condition',
-             labels={'weathersit': 'Weather Condition', 'count': 'Total Rentals'})
+
+fig = px.scatter(dfDay, x='hum', y='count', color='year',
+                 title='Total Bike Rider by Humidity',
+                 labels={'hum': 'Humidity (%)', 'count': 'Total Riders'},
+                 hover_name='year')
+
+for year in years:
+    df_year = dfDay[dfDay['year'] == year]
+    trendline = px.scatter(df_year, x='hum', y='count', trendline='lowess')
+    fig.add_trace(trendline.data[1])
 
 st.plotly_chart(fig, use_container_width=True)
 
-fig1 = px.box(dfDay, x='workingday', y='count', color='workingday',
-              title='Bike Rides Clusters by Working Day',
-              labels={'workingday': 'Working Day', 'count': 'Total Rentals'},
-              color_discrete_sequence=['#00FFFF', '#FF00FF', '#FFFF00', '#00FF00', '#FF0000'])
-fig1.update_xaxes(title_text='Working Day')
-fig1.update_yaxes(title_text='Total Rentals')
 
-fig2 = px.box(dfDay, x='holiday', y='count', color='holiday',
-              title='Bike Rides Clusters by Holiday',
-              labels={'holiday': 'Holiday', 'count': 'Total Rentals'},
-              color_discrete_sequence=['#00FFFF', '#FF00FF', '#FFFF00', '#00FF00', '#FF0000'])
-fig2.update_xaxes(title_text='Holiday')
-fig2.update_yaxes(title_text='Total Rentals')
+dayMean = dfDay.groupby(['year', 'weekday'])['casual'].mean().reset_index()
 
-fig3 = px.box(dfDay, x='weekday', y='count', color='weekday',
-              title='Bike Rides Clusters by Weekday',
-              labels={'weekday': 'Weekday', 'count': 'Total Rentals'},
-              color_discrete_sequence=['#00FFFF', '#FF00FF', '#FFFF00', '#00FF00', '#FF0000'])
-fig3.update_xaxes(title_text='Weekday')
-fig3.update_yaxes(title_text='Total Rentals')
+fig = px.line(dayMean, x='weekday', y='casual', color='year',
+              title='Average Casual Bike Rider by Weekday',
+              labels={'weekday': 'Day', 'casual': 'Total Casual Biker', 'year': 'Year'})
 
-st.plotly_chart(fig1, use_container_width=True)
-st.plotly_chart(fig2, use_container_width=True)
-st.plotly_chart(fig3, use_container_width=True)
+fig.update_xaxes(tickvals=[0, 1, 2, 3, 4, 5, 6], ticktext=['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'])
 
-fig = px.scatter(dfDay, x='atemp', y='count', color='season',
-                 title='Bike Rides Clusters by Season and Temperature',
-                 labels={'atemp': 'Temperature (°C)', 'count': 'Total Rentals'},
-                 color_discrete_sequence=['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728'],
-                 hover_name='season')
+fig.for_each_trace(
+    lambda trace: trace.update(name=str(int(float(trace.name)))) if trace.name.isdigit() else None
+)
 
 st.plotly_chart(fig, use_container_width=True)
 
-seasonal_usage = dfDay.groupby('season')[['registered', 'casual']].sum().reset_index()
 
-fig = px.bar(seasonal_usage, x='season', y=['registered', 'casual'],
-             title='Bike Rides Counts by Season',
-             labels={'season': 'Season', 'value': 'Total Rentals', 'variable': 'User Type'},
-             color_discrete_sequence=["#00FF00","#0000FF"], barmode='group')
+dayMean = dfDay.groupby(['year', 'weekday'])['registered'].mean().reset_index()
+
+fig = px.line(dayMean, x='weekday', y='registered', color='year',
+              title='Average Registered Bike Rider by Weekday',
+              labels={'weekday': 'Day', 'registered': 'Total Registered Biker', 'year': 'Year'})
+
+fig.update_xaxes(tickvals=[0, 1, 2, 3, 4, 5, 6], ticktext=['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'])
+
+fig.for_each_trace(
+    lambda trace: trace.update(name=str(int(float(trace.name)))) if trace.name.isdigit() else None
+)
 
 st.plotly_chart(fig, use_container_width=True)
+
+
+monthMean = dfDay.groupby(['year', 'month'])['count'].mean().reset_index()
+
+fig = px.line(monthMean, x='month', y='count', color='year',
+              title='Average Bike Rider by Month',
+              labels={'month': 'Month', 'count': 'Total Biker', 'year': 'Year'})
+
+fig.for_each_trace(
+    lambda trace: trace.update(name=str(int(float(trace.name)))) if trace.name.isdigit() else None
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+
+season_mapping = {1: 'Spring', 2: 'Summer', 3: 'Fall', 4: 'Winter'}
+dfDay['season'] = dfDay['season'].map(season_mapping)
+
+dfDay['season'] = pd.Categorical(dfDay['season'], categories=['Spring', 'Summer', 'Fall', 'Winter'], ordered=True)
+
+seasonMean = dfDay.groupby(['year', 'season'])['count'].mean().reset_index()
+
+fig = px.line(seasonMean, x='season', y='count', color='year',
+              title='Average Casual Bike Rider by Season',
+              labels={'season': 'Season', 'count': 'Total Biker', 'year': 'Year'})
+
+fig.update_xaxes(categoryorder='array', categoryarray=['Spring', 'Summer', 'Fall', 'Winter'])
+
+fig.for_each_trace(
+    lambda trace: trace.update(name=str(int(float(trace.name)))) if trace.name.isdigit() else None
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
+
 st.caption('Created by Hafiz Isnaini')
